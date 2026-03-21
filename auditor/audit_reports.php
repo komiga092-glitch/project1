@@ -1,9 +1,20 @@
 <?php
+error_reporting(E_ALL);
+ini_set('display_errors', 1);
+ini_set('display_startup_errors', 1);
+mysqli_report(MYSQLI_REPORT_ERROR | MYSQLI_REPORT_STRICT);
+
 session_start();
-require_once 'config/db.php';
+require_once __DIR__ . '/../config/db.php';
 
 if (!isset($_SESSION['user_id'])) {
-    header("Location: login.php");
+    header("Location: ../login.php");
+    exit;
+}
+
+$role = strtolower(trim($_SESSION['role'] ?? ''));
+if (!in_array($role, ['auditor', 'organization'])) {
+    header("Location: ../dashboard.php");
     exit;
 }
 
@@ -11,7 +22,7 @@ $user_id    = (int)($_SESSION['user_id'] ?? 0);
 $company_id = (int)($_SESSION['company_id'] ?? 0);
 
 if ($company_id <= 0) {
-    header("Location: select_company.php");
+    header("Location: ../company_switch.php");
     exit;
 }
 
@@ -22,31 +33,42 @@ $msg = '';
 $msgType = 'success';
 $edit_mode = false;
 
-function e($v){
-    return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
-}
-
-$assignments = [];
-$stmt = $conn->prepare("
-    SELECT assignment_id, audit_title, period_from, period_to, status, priority
-    FROM audit_assignments
-    WHERE company_id = ? AND (assigned_to = ? OR assigned_to IS NULL)
-    ORDER BY assignment_id DESC
-");
-$stmt->bind_param("ii", $company_id, $user_id);
-$stmt->execute();
-$res = $stmt->get_result();
-while ($row = $res->fetch_assoc()) $assignments[] = $row;
-$stmt->close();
-
+/* company */
 $company = null;
-$stmt = $conn->prepare("SELECT company_name, registration_no, email, phone FROM companies WHERE company_id = ? LIMIT 1");
+$stmt = $conn->prepare("
+    SELECT company_id, company_name, registration_no, email, phone, address
+    FROM companies
+    WHERE company_id = ?
+    LIMIT 1
+");
 $stmt->bind_param("i", $company_id);
 $stmt->execute();
 $res = $stmt->get_result();
 $company = $res->fetch_assoc();
 $stmt->close();
 
+if (!$company) {
+    header("Location: ../dashboard.php");
+    exit;
+}
+
+/* assignments */
+$assignments = [];
+$stmt = $conn->prepare("
+    SELECT assignment_id, audit_title, period_from, period_to, status, priority
+    FROM audit_assignments
+    WHERE company_id = ?
+    ORDER BY assignment_id DESC
+");
+$stmt->bind_param("i", $company_id);
+$stmt->execute();
+$res = $stmt->get_result();
+while ($row = $res->fetch_assoc()) {
+    $assignments[] = $row;
+}
+$stmt->close();
+
+/* edit defaults */
 $edit = [
     'report_id' => '',
     'assignment_id' => '',
@@ -61,11 +83,16 @@ $edit = [
     'report_file' => ''
 ];
 
+/* edit mode */
 if (isset($_GET['edit'])) {
-    $report_id = (int)$_GET['edit'];
+    $report_id = (int)($_GET['edit'] ?? 0);
+
     $stmt = $conn->prepare("
-        SELECT * FROM audit_reports
-        WHERE report_id = ? AND company_id = ? AND auditor_id = ?
+        SELECT *
+        FROM audit_reports
+        WHERE report_id = ?
+          AND company_id = ?
+          AND auditor_id = ?
         LIMIT 1
     ");
     $stmt->bind_param("iii", $report_id, $company_id, $user_id);
@@ -101,7 +128,9 @@ if (isset($_GET['edit'])) {
     $stmt->close();
 }
 
+/* save report */
 if (isset($_POST['save_report'])) {
+    $report_id              = (int)($_POST['report_id'] ?? 0);
     $assignment_id          = (int)($_POST['assignment_id'] ?? 0);
     $report_title           = trim($_POST['report_title'] ?? '');
     $main_description       = trim($_POST['main_description'] ?? '');
@@ -115,11 +144,11 @@ if (isset($_POST['save_report'])) {
     $report_file            = $existing_file;
 
     if ($report_title === '' || $main_description === '' || $signature_name === '') {
-        $msg = 'Please fill report title, report body, and signature name.';
+        $msg = 'Please fill report title, executive summary, and signature name.';
         $msgType = 'danger';
     } else {
         if (!empty($_FILES['report_file']['name'])) {
-            $uploadDir = 'uploads/audit_reports/';
+            $uploadDir = __DIR__ . '/../uploads/audit_reports/';
             if (!is_dir($uploadDir)) {
                 mkdir($uploadDir, 0777, true);
             }
@@ -128,9 +157,10 @@ if (isset($_POST['save_report'])) {
             $originalName = basename($_FILES['report_file']['name']);
             $safeName = time() . '_' . preg_replace('/[^A-Za-z0-9_\.-]/', '_', $originalName);
             $targetPath = $uploadDir . $safeName;
+            $dbPath = 'uploads/audit_reports/' . $safeName;
 
             if (move_uploaded_file($tmpName, $targetPath)) {
-                $report_file = $targetPath;
+                $report_file = $dbPath;
             } else {
                 $msg = 'File upload failed.';
                 $msgType = 'danger';
@@ -147,19 +177,29 @@ if (isset($_POST['save_report'])) {
                 "[SIGNATURE_DESIGNATION]\n" . $signature_designation . "\n[/SIGNATURE_DESIGNATION]\n\n" .
                 "[SIGNATURE_DATE]\n" . $signature_date . "\n[/SIGNATURE_DATE]";
 
-            if (!empty($_POST['report_id'])) {
-                $report_id = (int)$_POST['report_id'];
-
+            if ($report_id > 0) {
                 $stmt = $conn->prepare("
                     UPDATE audit_reports
                     SET assignment_id = ?, report_title = ?, report_description = ?, report_file = ?
-                    WHERE report_id = ? AND company_id = ? AND auditor_id = ?
+                    WHERE report_id = ?
+                      AND company_id = ?
+                      AND auditor_id = ?
                 ");
-                $stmt->bind_param("isssiii", $assignment_id, $report_title, $full_report_description, $report_file, $report_id, $company_id, $user_id);
+                $stmt->bind_param(
+                    "isssiii",
+                    $assignment_id,
+                    $report_title,
+                    $full_report_description,
+                    $report_file,
+                    $report_id,
+                    $company_id,
+                    $user_id
+                );
 
                 if ($stmt->execute()) {
                     $msg = 'Audit report updated successfully.';
                     $msgType = 'success';
+                    $edit_mode = false;
                 } else {
                     $msg = 'Failed to update audit report.';
                     $msgType = 'danger';
@@ -167,10 +207,19 @@ if (isset($_POST['save_report'])) {
                 $stmt->close();
             } else {
                 $stmt = $conn->prepare("
-                    INSERT INTO audit_reports (assignment_id, company_id, auditor_id, report_title, report_description, report_file)
+                    INSERT INTO audit_reports
+                    (assignment_id, company_id, auditor_id, report_title, report_description, report_file)
                     VALUES (?, ?, ?, ?, ?, ?)
                 ");
-                $stmt->bind_param("iiisss", $assignment_id, $company_id, $user_id, $report_title, $full_report_description, $report_file);
+                $stmt->bind_param(
+                    "iiisss",
+                    $assignment_id,
+                    $company_id,
+                    $user_id,
+                    $report_title,
+                    $full_report_description,
+                    $report_file
+                );
 
                 if ($stmt->execute()) {
                     $msg = 'Audit report saved successfully.';
@@ -185,11 +234,15 @@ if (isset($_POST['save_report'])) {
     }
 }
 
+/* delete */
 if (isset($_GET['delete'])) {
-    $report_id = (int)$_GET['delete'];
+    $report_id = (int)($_GET['delete'] ?? 0);
+
     $stmt = $conn->prepare("
         DELETE FROM audit_reports
-        WHERE report_id = ? AND company_id = ? AND auditor_id = ?
+        WHERE report_id = ?
+          AND company_id = ?
+          AND auditor_id = ?
     ");
     $stmt->bind_param("iii", $report_id, $company_id, $user_id);
 
@@ -203,22 +256,26 @@ if (isset($_GET['delete'])) {
     $stmt->close();
 }
 
+/* list reports */
 $rows = [];
 $stmt = $conn->prepare("
     SELECT r.*, a.audit_title, a.status, a.priority, a.period_from, a.period_to
     FROM audit_reports r
     LEFT JOIN audit_assignments a ON a.assignment_id = r.assignment_id
-    WHERE r.company_id = ? AND r.auditor_id = ?
+    WHERE r.company_id = ?
+      AND r.auditor_id = ?
     ORDER BY r.report_id DESC
 ");
 $stmt->bind_param("ii", $company_id, $user_id);
 $stmt->execute();
 $res = $stmt->get_result();
-while ($row = $res->fetch_assoc()) $rows[] = $row;
+while ($row = $res->fetch_assoc()) {
+    $rows[] = $row;
+}
 $stmt->close();
 
-include 'includes/header.php';
-include 'includes/sidebar.php';
+include __DIR__ . '/../includes/header.php';
+include __DIR__ . '/../includes/sidebar.php';
 ?>
 
 <div class="main-area">
@@ -230,9 +287,10 @@ include 'includes/sidebar.php';
                 <p><?= e($pageDescription) ?></p>
             </div>
         </div>
+
         <div class="topbar-right">
             <div class="company-pill"><?= e($_SESSION['company_name'] ?? 'Company') ?></div>
-            <div class="role-pill">Auditor</div>
+            <div class="role-pill"><?= e($_SESSION['role'] ?? 'Auditor') ?></div>
             <div class="user-chip">
                 <div class="avatar"><?= e(strtoupper(substr($_SESSION['full_name'] ?? 'A', 0, 1))) ?></div>
                 <div class="meta">
@@ -254,7 +312,7 @@ include 'includes/sidebar.php';
                 <span class="badge badge-primary">Final Audit Document</span>
             </div>
             <div class="card-body">
-                <form method="POST" enctype="multipart/form-data">
+                <form method="POST" enctype="multipart/form-data" autocomplete="off">
                     <input type="hidden" name="report_id" value="<?= e($edit['report_id']) ?>">
                     <input type="hidden" name="existing_file" value="<?= e($edit['report_file']) ?>">
 
@@ -262,7 +320,7 @@ include 'includes/sidebar.php';
                         <div class="form-group">
                             <label class="form-label">Audit Assignment</label>
                             <select name="assignment_id" class="form-control">
-                                <option value="">Select Assignment</option>
+                                <option value="0">General Report</option>
                                 <?php foreach ($assignments as $a): ?>
                                     <option value="<?= (int)$a['assignment_id'] ?>" <?= ((string)$edit['assignment_id'] === (string)$a['assignment_id']) ? 'selected' : '' ?>>
                                         <?= e($a['audit_title']) ?> | <?= e($a['priority']) ?> | <?= e($a['status']) ?>
@@ -408,11 +466,11 @@ include 'includes/sidebar.php';
                                 <?php if (!empty($row['report_file'])): ?>
                                     <p class="mt-20">
                                         <strong>Attached File:</strong>
-                                        <a href="<?= e($row['report_file']) ?>" target="_blank" class="text-primary">Open Attachment</a>
+                                        <a href="../<?= e($row['report_file']) ?>" target="_blank" class="text-primary">Open Attachment</a>
                                     </p>
                                 <?php endif; ?>
 
-                                <div class="mt-20 flex gap-12">
+                                <div class="mt-20 flex gap-12" style="flex-wrap:wrap;">
                                     <a href="?edit=<?= (int)$row['report_id'] ?>" class="btn btn-light">Edit</a>
                                     <a href="?delete=<?= (int)$row['report_id'] ?>" class="btn btn-danger" onclick="return confirm('Delete this audit report?')">Delete</a>
                                     <button type="button" onclick="window.print()" class="btn btn-primary">Print</button>
@@ -425,5 +483,6 @@ include 'includes/sidebar.php';
                 <?php endif; ?>
             </div>
         </div>
+    </div>
 
-<?php include 'includes/footer.php'; ?>
+<?php include __DIR__ . '/../includes/footer.php'; ?>

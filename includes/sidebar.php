@@ -6,6 +6,12 @@ if (session_status() === PHP_SESSION_NONE) {
 $currentPage = basename($_SERVER['PHP_SELF']);
 $role = strtolower(trim($_SESSION['role'] ?? ''));
 
+if (!function_exists('e')) {
+    function e($value) {
+        return htmlspecialchars((string)$value, ENT_QUOTES, 'UTF-8');
+    }
+}
+
 function isActive($fileName){
     global $currentPage;
     return $currentPage === $fileName ? 'active' : '';
@@ -29,73 +35,87 @@ function isActive($fileName){
             <span>Dashboard</span>
         </a>
 
-        <a href="select_company.php" class="<?= isActive('select_company.php') ?>">
+        <a href="add_company.php" class="<?= isActive('add_company.php') ?>">
             <span class="icon">🏢</span>
-            <span>Select Company</span>
+            <span>Add Company</span>
         </a>
 
-        <div class="menu-label">Transactions</div>
-
-        <a href="income.php" class="<?= isActive('income.php') ?>">
-            <span class="icon">💰</span>
-            <span>Income</span>
+        <a href="company_switch.php" class="<?= isActive('company_switch.php') ?>">
+            <span class="icon">🔄</span>
+            <span>My Companies</span>
         </a>
 
-        <a href="expenses.php" class="<?= isActive('expenses.php') ?>">
-            <span class="icon">💸</span>
-            <span>Expenses</span>
-        </a>
+        <?php if (in_array($role, ['accountant', 'organization'])): ?>
+            <div class="menu-label">Transactions</div>
 
-        <a href="cash_account.php" class="<?= isActive('cash_account.php') ?>">
-            <span class="icon">💵</span>
-            <span>Cash Account</span>
-        </a>
+            <a href="income.php" class="<?= isActive('income.php') ?>">
+                <span class="icon">💰</span>
+                <span>Income</span>
+            </a>
 
-        <a href="bank_account.php" class="<?= isActive('bank_account.php') ?>">
-            <span class="icon">🏦</span>
-            <span>Bank Account</span>
-        </a>
+            <a href="expenses.php" class="<?= isActive('expenses.php') ?>">
+                <span class="icon">💸</span>
+                <span>Expenses</span>
+            </a>
 
-        <div class="menu-label">Statements</div>
+            <a href="cash_account.php" class="<?= isActive('cash_account.php') ?>">
+                <span class="icon">💵</span>
+                <span>Cash Account</span>
+            </a>
 
-        <a href="assets.php" class="<?= isActive('assets.php') ?>">
-            <span class="icon">📦</span>
-            <span>Assets</span>
-        </a>
+            <a href="bank_account.php" class="<?= isActive('bank_account.php') ?>">
+                <span class="icon">🏦</span>
+                <span>Bank Account</span>
+            </a>
 
-        <a href="liabilities.php" class="<?= isActive('liabilities.php') ?>">
-            <span class="icon">📉</span>
-            <span>Liabilities</span>
-        </a>
+            <div class="menu-label">Statements</div>
 
-        <div class="menu-label">HR & Payroll</div>
+            <a href="assets.php" class="<?= isActive('assets.php') ?>">
+                <span class="icon">📦</span>
+                <span>Assets</span>
+            </a>
 
-        <a href="employees.php" class="<?= isActive('employees.php') ?>">
-            <span class="icon">👥</span>
-            <span>Employees</span>
-        </a>
+            <a href="liabilities.php" class="<?= isActive('liabilities.php') ?>">
+                <span class="icon">📉</span>
+                <span>Liabilities</span>
+            </a>
 
-        <a href="salaries.php" class="<?= isActive('salaries.php') ?>">
-            <span class="icon">🧾</span>
-            <span>Salaries</span>
-        </a>
+            <div class="menu-label">HR & Payroll</div>
+
+            <a href="employees.php" class="<?= isActive('employees.php') ?>">
+                <span class="icon">👥</span>
+                <span>Employees</span>
+            </a>
+
+            <a href="salaries.php" class="<?= isActive('salaries.php') ?>">
+                <span class="icon">🧾</span>
+                <span>Salaries</span>
+            </a>
+
+            <div class="menu-label">Audit Control</div>
+
+            <a href="invite_auditor.php" class="<?= isActive('invite_auditor.php') ?>">
+                <span class="icon">📨</span>
+                <span>Invite Auditor</span>
+            </a>
+        <?php endif; ?>
 
         <div class="menu-label">Reports</div>
 
-     <a href="income_expenditure_report.php" class="<?= isActive('income_expenditure_report.php') ?>">
-    <span class="icon">📄</span>
-    <span>Income & Expenditure</span>
-</a>
+        <a href="income_expenditure_report.php" class="<?= isActive('income_expenditure_report.php') ?>">
+            <span class="icon">📄</span>
+            <span>Income & Expenditure</span>
+        </a>
 
-<a href="assets_liabilities_report.php" class="<?= isActive('assets_liabilities_report.php') ?>">
-    <span class="icon">📑</span>
-    <span>Assets & Liabilities</span>
-</a>
+        <a href="assets_liabilities_report.php" class="<?= isActive('assets_liabilities_report.php') ?>">
+            <span class="icon">📑</span>
+            <span>Assets & Liabilities</span>
+        </a>
 
-        <?php if ($role === 'auditor'): ?>
+        <?php if (in_array($role, ['auditor', 'organization'])): ?>
             <div class="menu-label">Audit</div>
 
-            <a href="audit_notes.php" class="<?= isActive('audit_notes.php') ?>">
+            <a href="auditor/audit_notes.php" class="<?= isActive('audit_notes.php') ?>">
                 <span class="icon">📝</span>
                 <span>Audit Notes</span>
             </a>
@@ -125,7 +145,7 @@ function isActive($fileName){
     </div>
 
     <div class="sidebar-footer">
-        <div><strong><?= htmlspecialchars($_SESSION['company_name'] ?? 'No Company', ENT_QUOTES, 'UTF-8') ?></strong></div>
-        <div>Responsive for phone & laptop</div>
+        <div><strong><?= e($_SESSION['company_name'] ?? 'No Company') ?></strong></div>
+        <div><?= e($_SESSION['role'] ?? 'User') ?></div>
     </div>
 </aside>

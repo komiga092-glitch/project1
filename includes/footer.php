@@ -1,7 +1,7 @@
-    </div> <!-- .content -->
-</div> <!-- .main-area -->
+<?php
+$base_url = '/project1';
+?>
 </div> <!-- .app-shell -->
-
-<script src="assets/js/app.js"></script>
+<script src="<?= $base_url ?>/assets/js/app.js"></script>
 </body>
 </html>
