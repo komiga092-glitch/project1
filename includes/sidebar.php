@@ -120,7 +120,7 @@ function isActive($fileName){
                 <span>Audit Notes</span>
             </a>
 
-            <a href="audit_reports.php" class="<?= isActive('audit_reports.php') ?>">
+            <a href="auditor/audit_reports.php" class="<?= isActive('audit_reports.php') ?>">
                 <span class="icon">✅</span>
                 <span>Audit Reports</span>
             </a>

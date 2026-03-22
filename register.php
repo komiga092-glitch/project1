@@ -199,7 +199,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     </div>
 
                     <div class="form-group full">
-                        <button type="submit" class="btn btn-primary" style="width:100%;">Register Now</button>
+                        <button type="submit" class="btn btn-primary" style="width:100%;"><a href="login"> Register Now</a></button>
                     </div>
                 </div>
             </form>

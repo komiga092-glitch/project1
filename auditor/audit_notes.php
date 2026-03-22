@@ -222,17 +222,7 @@ include __DIR__ . '/../includes/sidebar.php';
                     <input type="hidden" name="note_id" value="<?= e($edit['note_id']) ?>">
 
                     <div class="form-grid">
-                        <div class="form-group">
-                            <label class="form-label">Audit Assignment</label>
-                            <select name="assignment_id" class="form-control">
-                                <option value="0">General Note</option>
-                                <?php foreach ($assignments as $assignment): ?>
-                                    <option value="<?= (int)$assignment['assignment_id'] ?>" <?= ((string)$edit['assignment_id'] === (string)$assignment['assignment_id']) ? 'selected' : '' ?>>
-                                        <?= e($assignment['audit_title']) ?> | <?= e($assignment['priority']) ?> | <?= e($assignment['status']) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
+                       
 
                         <div class="form-group">
                             <label class="form-label">Note Title</label>

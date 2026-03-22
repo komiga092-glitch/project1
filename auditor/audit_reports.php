@@ -317,17 +317,7 @@ include __DIR__ . '/../includes/sidebar.php';
                     <input type="hidden" name="existing_file" value="<?= e($edit['report_file']) ?>">
 
                     <div class="form-grid">
-                        <div class="form-group">
-                            <label class="form-label">Audit Assignment</label>
-                            <select name="assignment_id" class="form-control">
-                                <option value="0">General Report</option>
-                                <?php foreach ($assignments as $a): ?>
-                                    <option value="<?= (int)$a['assignment_id'] ?>" <?= ((string)$edit['assignment_id'] === (string)$a['assignment_id']) ? 'selected' : '' ?>>
-                                        <?= e($a['audit_title']) ?> | <?= e($a['priority']) ?> | <?= e($a['status']) ?>
-                                    </option>
-                                <?php endforeach; ?>
-                            </select>
-                        </div>
+                        
 
                         <div class="form-group">
                             <label class="form-label">Report Title</label>
@@ -379,7 +369,7 @@ include __DIR__ . '/../includes/sidebar.php';
                                 <?= $edit_mode ? 'Update Report' : 'Save Report' ?>
                             </button>
                             <?php if ($edit_mode): ?>
-                                <a href="audit_reports.php" class="btn btn-light">Cancel</a>
+                                <a href="auditor/audit_reports.php" class="btn btn-light">Cancel</a>
                             <?php endif; ?>
                         </div>
                     </div>
