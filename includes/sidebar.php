@@ -115,7 +115,7 @@ function isActive($fileName){
         <?php if (in_array($role, ['auditor', 'organization'])): ?>
             <div class="menu-label">Audit</div>
 
-            <a href="auditor/audit_notes.php" class="<?= isActive('audit_notes.php') ?>">
+            <a href="auditor/audit_notes.php" class="<?= isActive('auditor/audit_notes.php') ?>">
                 <span class="icon">📝</span>
                 <span>Audit Notes</span>
             </a>
