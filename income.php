@@ -23,7 +23,42 @@ function e($v){
     return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 }
 
-if (isset($_POST['add_income'])) {
+$edit_mode = false;
+$edit = [
+    'income_id' => '',
+    'income_type' => '',
+    'amount' => '',
+    'income_date' => '',
+    'description' => '',
+    'payment_source' => 'Cash',
+    'bank_name' => '',
+    'account_number' => ''
+];
+
+/* =========================
+   EDIT FETCH
+========================= */
+if (isset($_GET['edit'])) {
+    $income_id = (int)($_GET['edit'] ?? 0);
+
+    $stmt = $conn->prepare("SELECT * FROM income WHERE company_id = ? AND income_id = ? LIMIT 1");
+    $stmt->bind_param("ii", $company_id, $income_id);
+    $stmt->execute();
+    $res = $stmt->get_result();
+
+    if ($row = $res->fetch_assoc()) {
+        $edit = $row;
+        $edit_mode = true;
+    }
+
+    $stmt->close();
+}
+
+/* =========================
+   ADD / UPDATE INCOME
+========================= */
+if (isset($_POST['save_income'])) {
+    $income_id      = (int)($_POST['income_id'] ?? 0);
     $income_type    = trim($_POST['income_type'] ?? '');
     $amount         = (float)($_POST['amount'] ?? 0);
     $income_date    = trim($_POST['income_date'] ?? '');
@@ -32,14 +67,72 @@ if (isset($_POST['add_income'])) {
     $bank_name      = trim($_POST['bank_name'] ?? '');
     $account_number = trim($_POST['account_number'] ?? '');
 
+    if ($payment_source !== 'Bank') {
+        $bank_name = '';
+        $account_number = '';
+    }
+
     if ($income_type === '' || $amount <= 0 || $income_date === '') {
         $msg = 'Please fill required fields correctly.';
         $msgType = 'danger';
     } else {
-        $sql = "INSERT INTO income (company_id, income_type, amount, income_date, description, payment_source, bank_name, account_number)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
-        if ($stmt = $conn->prepare($sql)) {
-            $stmt->bind_param("isdsssss", $company_id, $income_type, $amount, $income_date, $description, $payment_source, $bank_name, $account_number);
+        if ($income_id > 0) {
+            $sql = "UPDATE income
+                    SET income_type = ?, amount = ?, income_date = ?, description = ?, payment_source = ?, bank_name = ?, account_number = ?
+                    WHERE company_id = ? AND income_id = ?";
+
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param(
+                "sdsssssii",
+                $income_type,
+                $amount,
+                $income_date,
+                $description,
+                $payment_source,
+                $bank_name,
+                $account_number,
+                $company_id,
+                $income_id
+            );
+
+            if ($stmt->execute()) {
+                $msg = 'Income record updated successfully.';
+                $msgType = 'success';
+
+                $edit_mode = false;
+                $edit = [
+                    'income_id' => '',
+                    'income_type' => '',
+                    'amount' => '',
+                    'income_date' => '',
+                    'description' => '',
+                    'payment_source' => 'Cash',
+                    'bank_name' => '',
+                    'account_number' => ''
+                ];
+            } else {
+                $msg = 'Failed to update income record.';
+                $msgType = 'danger';
+            }
+            $stmt->close();
+        } else {
+            $sql = "INSERT INTO income
+                    (company_id, income_type, amount, income_date, description, payment_source, bank_name, account_number)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
+
+            $stmt = $conn->prepare($sql);
+            $stmt->bind_param(
+                "isdsssss",
+                $company_id,
+                $income_type,
+                $amount,
+                $income_date,
+                $description,
+                $payment_source,
+                $bank_name,
+                $account_number
+            );
+
             if ($stmt->execute()) {
                 $msg = 'Income record added successfully.';
                 $msgType = 'success';
@@ -48,17 +141,19 @@ if (isset($_POST['add_income'])) {
                 $msgType = 'danger';
             }
             $stmt->close();
-        } else {
-            $msg = 'Query prepare failed. Check your income table schema.';
-            $msgType = 'danger';
         }
     }
 }
 
+/* =========================
+   DELETE INCOME
+========================= */
 if (isset($_GET['delete'])) {
-    $income_id = (int)$_GET['delete'];
+    $income_id = (int)($_GET['delete'] ?? 0);
+
     $stmt = $conn->prepare("DELETE FROM income WHERE company_id = ? AND income_id = ?");
     $stmt->bind_param("ii", $company_id, $income_id);
+
     if ($stmt->execute()) {
         $msg = 'Income record deleted successfully.';
         $msgType = 'success';
@@ -66,16 +161,25 @@ if (isset($_GET['delete'])) {
         $msg = 'Delete failed.';
         $msgType = 'danger';
     }
+
     $stmt->close();
 }
 
+/* =========================
+   FETCH ALL INCOME ROWS
+========================= */
 $rows = [];
 $sql = "SELECT * FROM income WHERE company_id = ? ORDER BY income_id DESC";
+
 if ($stmt = $conn->prepare($sql)) {
     $stmt->bind_param("i", $company_id);
     $stmt->execute();
     $res = $stmt->get_result();
-    while ($r = $res->fetch_assoc()) $rows[] = $r;
+
+    while ($r = $res->fetch_assoc()) {
+        $rows[] = $r;
+    }
+
     $stmt->close();
 }
 
@@ -112,52 +216,99 @@ include 'includes/sidebar.php';
 
         <div class="card">
             <div class="card-header">
-                <h3>Add Income</h3>
+                <h3><?= $edit_mode ? 'Edit Income' : 'Add Income' ?></h3>
                 <span class="badge badge-primary">Professional Entry</span>
             </div>
             <div class="card-body">
                 <form method="POST">
+                    <input type="hidden" name="income_id" value="<?= e($edit['income_id']) ?>">
+
                     <div class="form-grid">
                         <div class="form-group">
                             <label class="form-label">Income Type</label>
-                            <input type="text" name="income_type" class="form-control" placeholder="Donations / Grants / Membership Fees" required>
+                            <input
+                                type="text"
+                                name="income_type"
+                                class="form-control"
+                                placeholder="Donations / Grants / Membership Fees"
+                                value="<?= e($edit['income_type']) ?>"
+                                required
+                            >
                         </div>
 
                         <div class="form-group">
                             <label class="form-label">Amount</label>
-                            <input type="number" step="0.01" name="amount" class="form-control" required>
+                            <input
+                                type="number"
+                                step="0.01"
+                                name="amount"
+                                class="form-control"
+                                value="<?= e($edit['amount']) ?>"
+                                required
+                            >
                         </div>
 
                         <div class="form-group">
                             <label class="form-label">Income Date</label>
-                            <input type="date" name="income_date" class="form-control" required>
+                            <input
+                                type="date"
+                                name="income_date"
+                                class="form-control"
+                                value="<?= e($edit['income_date']) ?>"
+                                required
+                            >
                         </div>
 
                         <div class="form-group">
                             <label class="form-label">Payment Source</label>
-                            <select name="payment_source" class="form-control" onchange="toggleIncomeBankFields(this.value)">
-                                <option value="Cash">Cash</option>
-                                <option value="Bank">Bank</option>
+                            <select
+                                name="payment_source"
+                                class="form-control"
+                                id="incomePaymentSource"
+                                onchange="toggleIncomeBankFields(this.value)"
+                            >
+                                <option value="Cash" <?= ($edit['payment_source'] ?? 'Cash') === 'Cash' ? 'selected' : '' ?>>Cash</option>
+                                <option value="Bank" <?= ($edit['payment_source'] ?? '') === 'Bank' ? 'selected' : '' ?>>Bank</option>
                             </select>
                         </div>
 
                         <div class="form-group" id="incomeBankNameWrap" style="display:none;">
                             <label class="form-label">Bank Name</label>
-                            <input type="text" name="bank_name" class="form-control">
+                            <input
+                                type="text"
+                                name="bank_name"
+                                class="form-control"
+                                value="<?= e($edit['bank_name']) ?>"
+                            >
                         </div>
 
                         <div class="form-group" id="incomeAccountNoWrap" style="display:none;">
                             <label class="form-label">Account Number</label>
-                            <input type="text" name="account_number" class="form-control">
+                            <input
+                                type="text"
+                                name="account_number"
+                                class="form-control"
+                                value="<?= e($edit['account_number']) ?>"
+                            >
                         </div>
 
                         <div class="form-group full">
                             <label class="form-label">Description</label>
-                            <textarea name="description" class="form-control" placeholder="Enter remarks"></textarea>
+                            <textarea
+                                name="description"
+                                class="form-control"
+                                placeholder="Enter remarks"
+                            ><?= e($edit['description']) ?></textarea>
                         </div>
 
                         <div class="form-group full">
-                            <button type="submit" name="add_income" class="btn btn-primary">Save Income</button>
+                            <button type="submit" name="save_income" class="btn btn-primary">
+                                <?= $edit_mode ? 'Update Income' : 'Save Income' ?>
+                            </button>
+
+                            <?php if ($edit_mode): ?>
+                                <a href="income.php" class="btn btn-light">Cancel</a>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </form>
@@ -191,21 +342,30 @@ include 'includes/sidebar.php';
                                     <td><?= e($row['income_type'] ?? '') ?></td>
                                     <td>Rs. <?= number_format((float)($row['amount'] ?? 0), 2) ?></td>
                                     <td><?= e($row['income_date'] ?? '') ?></td>
-                                    <td><span class="badge badge-primary"><?= e($row['payment_source'] ?? 'Cash') ?></span></td>
+                                    <td>
+                                        <span class="badge badge-primary">
+                                            <?= e($row['payment_source'] ?? 'Cash') ?>
+                                        </span>
+                                    </td>
                                     <td><?= e($row['description'] ?? '') ?></td>
                                     <td>
+                                        <a class="btn btn-light" href="?edit=<?= (int)$row['income_id'] ?>">Edit</a>
                                         <a class="btn btn-danger" href="?delete=<?= (int)$row['income_id'] ?>" onclick="return confirm('Delete this income record?')">Delete</a>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>
                         <?php else: ?>
-                            <tr><td colspan="7">No income records found.</td></tr>
+                            <tr>
+                                <td colspan="7">No income records found.</td>
+                            </tr>
                         <?php endif; ?>
                         </tbody>
                     </table>
                 </div>
             </div>
         </div>
+    </div>
+</div>
 
 <?php include 'includes/footer.php'; ?>
 
@@ -214,4 +374,6 @@ function toggleIncomeBankFields(value){
     document.getElementById('incomeBankNameWrap').style.display = value === 'Bank' ? 'block' : 'none';
     document.getElementById('incomeAccountNoWrap').style.display = value === 'Bank' ? 'block' : 'none';
 }
+
+toggleIncomeBankFields(document.getElementById('incomePaymentSource').value);
 </script>

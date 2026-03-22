@@ -23,33 +23,80 @@ function e($v){
     return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 }
 
-if (isset($_POST['add_cash'])) {
+$edit_mode = false;
+$edit = [
+    'cash_id' => '',
+    'transaction_date' => '',
+    'description' => '',
+    'transaction_type' => '',
+    'amount' => ''
+];
+
+if (isset($_GET['edit'])) {
+    $cash_id = (int)($_GET['edit'] ?? 0);
+    $stmt = $conn->prepare("SELECT * FROM cash_account WHERE company_id = ? AND cash_id = ? LIMIT 1");
+    $stmt->bind_param("ii", $company_id, $cash_id);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    if ($row = $res->fetch_assoc()) {
+        $edit = $row;
+        $edit_mode = true;
+    }
+    $stmt->close();
+}
+
+if (isset($_POST['save_cash'])) {
+    $cash_id          = (int)($_POST['cash_id'] ?? 0);
     $transaction_date = trim($_POST['transaction_date'] ?? '');
     $description      = trim($_POST['description'] ?? '');
     $transaction_type = trim($_POST['transaction_type'] ?? '');
     $amount           = (float)($_POST['amount'] ?? 0);
 
-    if ($transaction_date === '' || $description === '' || $amount <= 0 || !in_array($transaction_type, ['Cash In', 'Cash Out'])) {
+    if ($transaction_date === '' || $description === '' || $amount <= 0 || !in_array($transaction_type, ['Cash In', 'Cash Out'], true)) {
         $msg = 'Please fill all required fields correctly.';
         $msgType = 'danger';
     } else {
-        $stmt = $conn->prepare("INSERT INTO cash_account (company_id, transaction_date, description, transaction_type, amount)
-                                VALUES (?, ?, ?, ?, ?)");
-        $stmt->bind_param("isssd", $company_id, $transaction_date, $description, $transaction_type, $amount);
+        if ($cash_id > 0) {
+            $stmt = $conn->prepare("UPDATE cash_account
+                SET transaction_date = ?, description = ?, transaction_type = ?, amount = ?
+                WHERE company_id = ? AND cash_id = ?");
+            $stmt->bind_param("sssdii", $transaction_date, $description, $transaction_type, $amount, $company_id, $cash_id);
 
-        if ($stmt->execute()) {
-            $msg = 'Cash transaction added successfully.';
-            $msgType = 'success';
+            if ($stmt->execute()) {
+                $msg = 'Cash transaction updated successfully.';
+                $msgType = 'success';
+                $edit_mode = false;
+                $edit = [
+                    'cash_id' => '',
+                    'transaction_date' => '',
+                    'description' => '',
+                    'transaction_type' => '',
+                    'amount' => ''
+                ];
+            } else {
+                $msg = 'Failed to update cash transaction.';
+                $msgType = 'danger';
+            }
+            $stmt->close();
         } else {
-            $msg = 'Failed to add cash transaction.';
-            $msgType = 'danger';
+            $stmt = $conn->prepare("INSERT INTO cash_account (company_id, transaction_date, description, transaction_type, amount)
+                                    VALUES (?, ?, ?, ?, ?)");
+            $stmt->bind_param("isssd", $company_id, $transaction_date, $description, $transaction_type, $amount);
+
+            if ($stmt->execute()) {
+                $msg = 'Cash transaction added successfully.';
+                $msgType = 'success';
+            } else {
+                $msg = 'Failed to add cash transaction.';
+                $msgType = 'danger';
+            }
+            $stmt->close();
         }
-        $stmt->close();
     }
 }
 
-if (isset($_GET['delete'])) {
-    $cash_id = (int)$_GET['delete'];
+if (isset($_POST['delete_cash'])) {
+    $cash_id = (int)($_POST['cash_id'] ?? 0);
     $stmt = $conn->prepare("DELETE FROM cash_account WHERE company_id = ? AND cash_id = ?");
     $stmt->bind_param("ii", $company_id, $cash_id);
     if ($stmt->execute()) {
@@ -143,38 +190,42 @@ include 'includes/sidebar.php';
 
         <div class="card mt-24">
             <div class="card-header">
-                <h3>Add Cash Transaction</h3>
+                <h3><?= $edit_mode ? 'Edit Cash Transaction' : 'Add Cash Transaction' ?></h3>
                 <span class="badge badge-primary">Cash Ledger Entry</span>
             </div>
             <div class="card-body">
                 <form method="POST">
+                    <input type="hidden" name="cash_id" value="<?= e($edit['cash_id']) ?>">
                     <div class="form-grid">
                         <div class="form-group">
                             <label class="form-label">Transaction Date</label>
-                            <input type="date" name="transaction_date" class="form-control" required>
+                            <input type="date" name="transaction_date" class="form-control" value="<?= e($edit['transaction_date']) ?>" required>
                         </div>
 
                         <div class="form-group">
                             <label class="form-label">Transaction Type</label>
                             <select name="transaction_type" class="form-control" required>
                                 <option value="">Select Type</option>
-                                <option value="Cash In">Cash In</option>
-                                <option value="Cash Out">Cash Out</option>
+                                <option value="Cash In" <?= ($edit['transaction_type'] ?? '') === 'Cash In' ? 'selected' : '' ?>>Cash In</option>
+                                <option value="Cash Out" <?= ($edit['transaction_type'] ?? '') === 'Cash Out' ? 'selected' : '' ?>>Cash Out</option>
                             </select>
                         </div>
 
                         <div class="form-group">
                             <label class="form-label">Amount</label>
-                            <input type="number" step="0.01" name="amount" class="form-control" required>
+                            <input type="number" step="0.01" name="amount" class="form-control" value="<?= e($edit['amount']) ?>" required>
                         </div>
 
                         <div class="form-group full">
                             <label class="form-label">Description</label>
-                            <textarea name="description" class="form-control" placeholder="Enter transaction description" required></textarea>
+                            <textarea name="description" class="form-control" placeholder="Enter transaction description" required><?= e($edit['description']) ?></textarea>
                         </div>
 
                         <div class="form-group full">
-                            <button type="submit" name="add_cash" class="btn btn-primary">Save Cash Entry</button>
+                            <button type="submit" name="save_cash" class="btn btn-primary"><?= $edit_mode ? 'Update Cash Entry' : 'Save Cash Entry' ?></button>
+                            <?php if ($edit_mode): ?>
+                                <a href="cash_account.php" class="btn btn-light">Cancel</a>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </form>
@@ -212,7 +263,11 @@ include 'includes/sidebar.php';
                                     </td>
                                     <td>Rs. <?= number_format((float)$row['amount'], 2) ?></td>
                                     <td>
-                                        <a class="btn btn-danger" href="?delete=<?= (int)$row['cash_id'] ?>" onclick="return confirm('Delete this cash entry?')">Delete</a>
+                                        <a class="btn btn-light" href="?edit=<?= (int)$row['cash_id'] ?>">Edit</a>
+                                        <form method="POST" style="display:inline-block;" onsubmit="return confirm('Delete this cash entry?')">
+                                            <input type="hidden" name="cash_id" value="<?= (int)$row['cash_id'] ?>">
+                                            <button type="submit" name="delete_cash" class="btn btn-danger">Delete</button>
+                                        </form>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>

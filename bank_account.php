@@ -23,36 +23,87 @@ function e($v){
     return htmlspecialchars((string)$v, ENT_QUOTES, 'UTF-8');
 }
 
-if (isset($_POST['add_bank'])) {
-    $transaction_date = trim($_POST['transaction_date'] ?? '');
-    $bank_name        = trim($_POST['bank_name'] ?? '');
-    $account_number   = trim($_POST['account_number'] ?? '');
-    $description      = trim($_POST['description'] ?? '');
-    $transaction_type = trim($_POST['transaction_type'] ?? '');
-    $amount           = (float)($_POST['amount'] ?? 0);
+$edit_mode = false;
+$edit = [
+    'bank_id' => '',
+    'transaction_date' => '',
+    'bank_name' => '',
+    'account_number' => '',
+    'description' => '',
+    'transaction_type' => '',
+    'amount' => ''
+];
 
-    if ($transaction_date === '' || $bank_name === '' || $account_number === '' || $description === '' || $amount <= 0 || !in_array($transaction_type, ['Credit', 'Debit'])) {
+if (isset($_GET['edit'])) {
+    $bank_id = (int)($_GET['edit'] ?? 0);
+    $stmt = $conn->prepare("SELECT * FROM bank_account WHERE company_id = ? AND bank_id = ? LIMIT 1");
+    $stmt->bind_param("ii", $company_id, $bank_id);
+    $stmt->execute();
+    $res = $stmt->get_result();
+    if ($row = $res->fetch_assoc()) {
+        $edit = $row;
+        $edit_mode = true;
+    }
+    $stmt->close();
+}
+
+if (isset($_POST['save_bank'])) {
+    $bank_id           = (int)($_POST['bank_id'] ?? 0);
+    $transaction_date  = trim($_POST['transaction_date'] ?? '');
+    $bank_name         = trim($_POST['bank_name'] ?? '');
+    $account_number    = trim($_POST['account_number'] ?? '');
+    $description       = trim($_POST['description'] ?? '');
+    $transaction_type  = trim($_POST['transaction_type'] ?? '');
+    $amount            = (float)($_POST['amount'] ?? 0);
+
+    if ($transaction_date === '' || $bank_name === '' || $account_number === '' || $description === '' || $amount <= 0 || !in_array($transaction_type, ['Credit', 'Debit'], true)) {
         $msg = 'Please fill all required bank fields correctly.';
         $msgType = 'danger';
     } else {
-        $stmt = $conn->prepare("INSERT INTO bank_account
-            (company_id, transaction_date, bank_name, account_number, description, transaction_type, amount)
-            VALUES (?, ?, ?, ?, ?, ?, ?)");
-        $stmt->bind_param("isssssd", $company_id, $transaction_date, $bank_name, $account_number, $description, $transaction_type, $amount);
+        if ($bank_id > 0) {
+            $stmt = $conn->prepare("UPDATE bank_account
+                SET transaction_date = ?, bank_name = ?, account_number = ?, description = ?, transaction_type = ?, amount = ?
+                WHERE company_id = ? AND bank_id = ?");
+            $stmt->bind_param("sssssdii", $transaction_date, $bank_name, $account_number, $description, $transaction_type, $amount, $company_id, $bank_id);
 
-        if ($stmt->execute()) {
-            $msg = 'Bank transaction added successfully.';
-            $msgType = 'success';
+            if ($stmt->execute()) {
+                $msg = 'Bank transaction updated successfully.';
+                $msgType = 'success';
+                $edit_mode = false;
+                $edit = [
+                    'bank_id' => '',
+                    'transaction_date' => '',
+                    'bank_name' => '',
+                    'account_number' => '',
+                    'description' => '',
+                    'transaction_type' => '',
+                    'amount' => ''
+                ];
+            } else {
+                $msg = 'Failed to update bank transaction.';
+                $msgType = 'danger';
+            }
+            $stmt->close();
         } else {
-            $msg = 'Failed to add bank transaction.';
-            $msgType = 'danger';
+            $stmt = $conn->prepare("INSERT INTO bank_account
+                (company_id, transaction_date, bank_name, account_number, description, transaction_type, amount)
+                VALUES (?, ?, ?, ?, ?, ?, ?)");
+            $stmt->bind_param("isssssd", $company_id, $transaction_date, $bank_name, $account_number, $description, $transaction_type, $amount);
+
+            if ($stmt->execute()) {
+                $msg = 'Bank transaction added successfully.';
+                $msgType = 'success';
+            } else {
+                $msg = 'Failed to add bank transaction.';
+                $msgType = 'danger';
+            }
+            $stmt->close();
         }
-        $stmt->close();
     }
 }
 
-if (isset($_GET['delete'])) {
-    $bank_id = (int)$_GET['delete'];
+if (isset($_POST['delete_bank'])) {
+    $bank_id = (int)($_POST['bank_id'] ?? 0);
     $stmt = $conn->prepare("DELETE FROM bank_account WHERE company_id = ? AND bank_id = ?");
     $stmt->bind_param("ii", $company_id, $bank_id);
     if ($stmt->execute()) {
@@ -146,48 +197,52 @@ include 'includes/sidebar.php';
 
         <div class="card mt-24">
             <div class="card-header">
-                <h3>Add Bank Transaction</h3>
+                <h3><?= $edit_mode ? 'Edit Bank Transaction' : 'Add Bank Transaction' ?></h3>
                 <span class="badge badge-primary">Bank Ledger Entry</span>
             </div>
             <div class="card-body">
                 <form method="POST">
+                    <input type="hidden" name="bank_id" value="<?= e($edit['bank_id']) ?>">
                     <div class="form-grid">
                         <div class="form-group">
                             <label class="form-label">Transaction Date</label>
-                            <input type="date" name="transaction_date" class="form-control" required>
+                            <input type="date" name="transaction_date" class="form-control" value="<?= e($edit['transaction_date']) ?>" required>
                         </div>
 
                         <div class="form-group">
                             <label class="form-label">Bank Name</label>
-                            <input type="text" name="bank_name" class="form-control" required>
+                            <input type="text" name="bank_name" class="form-control" value="<?= e($edit['bank_name']) ?>" required>
                         </div>
 
                         <div class="form-group">
                             <label class="form-label">Account Number</label>
-                            <input type="text" name="account_number" class="form-control" required>
+                            <input type="text" name="account_number" class="form-control" value="<?= e($edit['account_number']) ?>" required>
                         </div>
 
                         <div class="form-group">
                             <label class="form-label">Transaction Type</label>
                             <select name="transaction_type" class="form-control" required>
                                 <option value="">Select Type</option>
-                                <option value="Credit">Credit</option>
-                                <option value="Debit">Debit</option>
+                                <option value="Credit" <?= ($edit['transaction_type'] ?? '') === 'Credit' ? 'selected' : '' ?>>Credit</option>
+                                <option value="Debit" <?= ($edit['transaction_type'] ?? '') === 'Debit' ? 'selected' : '' ?>>Debit</option>
                             </select>
                         </div>
 
                         <div class="form-group">
                             <label class="form-label">Amount</label>
-                            <input type="number" step="0.01" name="amount" class="form-control" required>
+                            <input type="number" step="0.01" name="amount" class="form-control" value="<?= e($edit['amount']) ?>" required>
                         </div>
 
                         <div class="form-group full">
                             <label class="form-label">Description</label>
-                            <textarea name="description" class="form-control" placeholder="Enter transaction description" required></textarea>
+                            <textarea name="description" class="form-control" placeholder="Enter transaction description" required><?= e($edit['description']) ?></textarea>
                         </div>
 
                         <div class="form-group full">
-                            <button type="submit" name="add_bank" class="btn btn-primary">Save Bank Entry</button>
+                            <button type="submit" name="save_bank" class="btn btn-primary"><?= $edit_mode ? 'Update Bank Entry' : 'Save Bank Entry' ?></button>
+                            <?php if ($edit_mode): ?>
+                                <a href="bank_account.php" class="btn btn-light">Cancel</a>
+                            <?php endif; ?>
                         </div>
                     </div>
                 </form>
@@ -229,7 +284,11 @@ include 'includes/sidebar.php';
                                     </td>
                                     <td>Rs. <?= number_format((float)$row['amount'], 2) ?></td>
                                     <td>
-                                        <a class="btn btn-danger" href="?delete=<?= (int)$row['bank_id'] ?>" onclick="return confirm('Delete this bank entry?')">Delete</a>
+                                        <a class="btn btn-light" href="?edit=<?= (int)$row['bank_id'] ?>">Edit</a>
+                                        <form method="POST" style="display:inline-block;" onsubmit="return confirm('Delete this bank entry?')">
+                                            <input type="hidden" name="bank_id" value="<?= (int)$row['bank_id'] ?>">
+                                            <button type="submit" name="delete_bank" class="btn btn-danger">Delete</button>
+                                        </form>
                                     </td>
                                 </tr>
                             <?php endforeach; ?>

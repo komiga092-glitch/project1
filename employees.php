@@ -36,7 +36,7 @@ $edit = [
 ];
 
 if (isset($_GET['edit'])) {
-    $employee_id = (int)$_GET['edit'];
+    $employee_id = (int)($_GET['edit'] ?? 0);
     $stmt = $conn->prepare("SELECT * FROM employees WHERE company_id = ? AND employee_id = ? LIMIT 1");
     $stmt->bind_param("ii", $company_id, $employee_id);
     $stmt->execute();
@@ -49,21 +49,20 @@ if (isset($_GET['edit'])) {
 }
 
 if (isset($_POST['save_employee'])) {
+    $employee_id   = (int)($_POST['employee_id'] ?? 0);
     $employee_name = trim($_POST['employee_name'] ?? '');
-    $nic          = trim($_POST['nic'] ?? '');
-    $phone        = trim($_POST['phone'] ?? '');
-    $email        = trim($_POST['email'] ?? '');
-    $position     = trim($_POST['position'] ?? '');
-    $basic_salary = (float)($_POST['basic_salary'] ?? 0);
-    $join_date    = trim($_POST['join_date'] ?? '');
+    $nic           = trim($_POST['nic'] ?? '');
+    $phone         = trim($_POST['phone'] ?? '');
+    $email         = trim($_POST['email'] ?? '');
+    $position      = trim($_POST['position'] ?? '');
+    $basic_salary  = (float)($_POST['basic_salary'] ?? 0);
+    $join_date     = trim($_POST['join_date'] ?? '');
 
     if ($employee_name === '' || $basic_salary < 0) {
         $msg = 'Please enter employee name and valid basic salary.';
         $msgType = 'danger';
     } else {
-        if (!empty($_POST['employee_id'])) {
-            $employee_id = (int)$_POST['employee_id'];
-
+        if ($employee_id > 0) {
             $stmt = $conn->prepare("UPDATE employees
                 SET employee_name = ?, nic = ?, phone = ?, email = ?, position = ?, basic_salary = ?, join_date = ?
                 WHERE company_id = ? AND employee_id = ?");
@@ -83,6 +82,17 @@ if (isset($_POST['save_employee'])) {
             if ($stmt->execute()) {
                 $msg = 'Employee updated successfully.';
                 $msgType = 'success';
+                $edit_mode = false;
+                $edit = [
+                    'employee_id' => '',
+                    'employee_name' => '',
+                    'nic' => '',
+                    'phone' => '',
+                    'email' => '',
+                    'position' => '',
+                    'basic_salary' => '',
+                    'join_date' => ''
+                ];
             } else {
                 $msg = 'Failed to update employee.';
                 $msgType = 'danger';
@@ -116,8 +126,8 @@ if (isset($_POST['save_employee'])) {
     }
 }
 
-if (isset($_GET['delete'])) {
-    $employee_id = (int)$_GET['delete'];
+if (isset($_POST['delete_employee'])) {
+    $employee_id = (int)($_POST['employee_id'] ?? 0);
     $stmt = $conn->prepare("DELETE FROM employees WHERE company_id = ? AND employee_id = ?");
     $stmt->bind_param("ii", $company_id, $employee_id);
     if ($stmt->execute()) {
@@ -241,32 +251,37 @@ include 'includes/sidebar.php';
                                 <th>Name</th>
                                 <th>NIC</th>
                                 <th>Phone</th>
+                                <th>Email</th>
                                 <th>Position</th>
-                                <th>Salary</th>
+                                <th>Basic Salary</th>
                                 <th>Join Date</th>
                                 <th>Action</th>
                             </tr>
                         </thead>
                         <tbody>
-                            <?php if ($rows): ?>
-                                <?php foreach ($rows as $row): ?>
-                                    <tr>
-                                        <td><?= e($row['employee_id']) ?></td>
-                                        <td><?= e($row['employee_name']) ?></td>
-                                        <td><?= e($row['nic']) ?></td>
-                                        <td><?= e($row['phone']) ?></td>
-                                        <td><?= e($row['position']) ?></td>
-                                        <td>Rs. <?= number_format((float)$row['basic_salary'], 2) ?></td>
-                                        <td><?= e($row['join_date']) ?></td>
-                                        <td>
-                                            <a href="?edit=<?= (int)$row['employee_id'] ?>" class="btn btn-light">Edit</a>
-                                            <a href="?delete=<?= (int)$row['employee_id'] ?>" class="btn btn-danger" onclick="return confirm('Delete this employee?')">Delete</a>
-                                        </td>
-                                    </tr>
-                                <?php endforeach; ?>
-                            <?php else: ?>
-                                <tr><td colspan="8">No employees found.</td></tr>
-                            <?php endif; ?>
+                        <?php if ($rows): ?>
+                            <?php foreach ($rows as $row): ?>
+                                <tr>
+                                    <td><?= e($row['employee_id']) ?></td>
+                                    <td><?= e($row['employee_name']) ?></td>
+                                    <td><?= e($row['nic']) ?></td>
+                                    <td><?= e($row['phone']) ?></td>
+                                    <td><?= e($row['email']) ?></td>
+                                    <td><?= e($row['position']) ?></td>
+                                    <td>Rs. <?= number_format((float)$row['basic_salary'], 2) ?></td>
+                                    <td><?= e($row['join_date']) ?></td>
+                                    <td>
+                                        <a href="?edit=<?= (int)$row['employee_id'] ?>" class="btn btn-light">Edit</a>
+                                        <form method="POST" style="display:inline-block;" onsubmit="return confirm('Delete this employee?')">
+                                            <input type="hidden" name="employee_id" value="<?= (int)$row['employee_id'] ?>">
+                                            <button type="submit" name="delete_employee" class="btn btn-danger">Delete</button>
+                                        </form>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        <?php else: ?>
+                            <tr><td colspan="9">No employee records found.</td></tr>
+                        <?php endif; ?>
                         </tbody>
                     </table>
                 </div>
